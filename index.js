@@ -1,5 +1,4 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
 
 console.log("🚀 WhatsApp Bot Starting...");
 
@@ -10,31 +9,36 @@ async function startBot() {
         auth: state,
         printQRInTerminal: false,
         markReads: true,
-        browser: ["Ubuntu", "Chrome", "110.0.0"],
+        browser: ["Chrome", "Windows", "131.0"],
     });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            console.log("\n📱 === SCAN THIS QR CODE ===\n");
-            qrcode.generate(qr, { small: true });
-            console.log("\nIf QR doesn't appear clearly, restart the service.");
+            console.log("QR received but using pairing code...");
         }
 
         if (connection === 'open') {
             console.log('✅ Bot Connected Successfully! 🎉');
         }
 
-        if (connection === 'close' && lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-            console.log("🔄 Reconnecting in 10 seconds...");
+        if (connection === 'close') {
+            console.log("Connection closed. Reconnecting...");
             setTimeout(startBot, 10000);
         }
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    console.log("✅ Waiting for QR Code...");
+    // Pairing Code
+    if (!sock.authState.creds.registered) {
+        const phoneNumber = "+254113123471"; // ← CHANGE TO YOUR NUMBER
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log("\n🔥 YOUR PAIRING CODE:");
+        console.log(code);
+        console.log("\nGo to WhatsApp → Linked Devices → Link with Phone Number");
+    }
 }
 
 startBot();
