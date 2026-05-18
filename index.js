@@ -1,7 +1,7 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 
-console.log("🚀 Starting WhatsApp Bot...");
+console.log("🚀 WhatsApp Bot Starting...");
 
 const messageCache = new Map();
 const lastReply = new Map();
@@ -18,27 +18,17 @@ async function startBot() {
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-
         if (qr) qrcode.generate(qr, { small: true });
 
         if (connection === 'open') {
-            console.log('✅ Bot Connected Successfully! 🎉');
-            // Safe presence update
-            sock.sendPresenceUpdate('available').catch(() => {});
+            console.log('✅ Bot Connected Successfully!');
         }
-
         if (connection === 'close' && lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-            console.log("🔄 Reconnecting...");
-            setTimeout(startBot, 10000);
+            setTimeout(startBot, 8000);
         }
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-    // Always Online
-    setInterval(() => {
-        sock.sendPresenceUpdate('available').catch(() => {});
-    }, 30000);
 
     // Auto View Status
     sock.ev.on('messages.upsert', async ({ messages }) => {
@@ -48,7 +38,7 @@ async function startBot() {
                     remoteJid: msg.key.remoteJid,
                     id: msg.key.id,
                     participant: msg.key.participant
-                }]).catch(() => {});
+                }]);
             }
         }
     });
@@ -73,23 +63,20 @@ async function startBot() {
                     const msg = cached.message;
                     if (msg.conversation) content = msg.conversation;
                     else if (msg.extendedTextMessage?.text) content = msg.extendedTextMessage.text;
-                    else if (msg.imageMessage) content = "[🖼️ Image]";
-                    else if (msg.videoMessage) content = "[🎥 Video]";
+                    else if (msg.imageMessage) content = "[Image]";
+                    else if (msg.videoMessage) content = "[Video]";
                 }
 
-                if (isGroup) {
-                    await sock.sendMessage(key.remoteJid, {
-                        text: `🛡️ *ANTI-DELETE*\nDeleted by: @${deleter.split('@')[0]}\n\n> ${content}`,
-                        mentions: [deleter]
-                    }).catch(() => {});
-                } else {
-                    await sock.sendMessage(key.remoteJid, { text: `🛡️ *Message Deleted*\n\n> ${content}` }).catch(() => {});
-                }
+                const text = isGroup 
+                    ? `🛡️ *ANTI-DELETE*\nDeleted by: @${deleter.split('@')[0]}\n\n> ${content}`
+                    : `🛡️ *Message Deleted*\n\n> ${content}`;
+
+                await sock.sendMessage(key.remoteJid, { text });
             }
         }
     });
 
-    // Quick Replies + Admin Commands
+    // Quick Replies & Admin Commands
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message || m.key.fromMe) return;
@@ -98,55 +85,26 @@ async function startBot() {
         const from = m.key.remoteJid;
         const isGroup = from.endsWith('@g.us');
 
-        const now = Date.now();
-        if (lastReply.has(from) && now - lastReply.get(from) < 3500) return;
-        lastReply.set(from, now);
+        if (lastReply.has(from) && Date.now() - lastReply.get(from) < 4000) return;
+        lastReply.set(from, Date.now());
 
         // Quick Replies
-        if (['hi', 'hello', 'hey'].includes(text)) {
-            await sock.sendMessage(from, { text: "👋 Hello! How can I help you today?" });
-        }
-        else if (text.includes('how are you')) {
-            await sock.sendMessage(from, { text: "I'm doing great, thank you! 😊 How about you?" });
-        }
-        else if (text.includes('good morning')) {
-            await sock.sendMessage(from, { text: "🌅 Good morning! Have a wonderful day!" });
-        }
-        else if (text.includes('good night')) {
-            await sock.sendMessage(from, { text: "🌙 Good night! Sweet dreams." });
-        }
-        else if (text === 'time') {
-            const time = new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' });
-            await sock.sendMessage(from, { text: `🕒 ${time}` });
-        }
-        else if (text === 'ping') {
-            await sock.sendMessage(from, { text: '🏓 Pong! Bot is active ✅' });
-        }
-        else if (text === 'menu') {
-            await sock.sendMessage(from, { text: "📋 *Bot Menu*\n\nQuick: hi, how are you, good morning, good night, time, ping\n\nAdmin: .mute .unmute .kick @user" });
-        }
+        if (['hi', 'hello', 'hey'].includes(text)) await sock.sendMessage(from, { text: "👋 Hello! How can I help you?" });
+        if (text.includes('how are you')) await sock.sendMessage(from, { text: "I'm fine, thank you! 😊 How about you?" });
+        if (text.includes('good morning')) await sock.sendMessage(from, { text: "🌅 Good morning!" });
+        if (text.includes('good night')) await sock.sendMessage(from, { text: "🌙 Good night!" });
+        if (text === 'menu') await sock.sendMessage(from, { text: "📋 Menu: hi, time, ping, .mute, .unmute, .kick @user" });
 
         // Admin Commands
         if (isGroup) {
-            if (text === '.mute') {
-                await sock.groupSettingUpdate(from, "announcement");
-                await sock.sendMessage(from, { text: "🔇 Group Muted" });
-            }
-            if (text === '.unmute') {
-                await sock.groupSettingUpdate(from, "not_announcement");
-                await sock.sendMessage(from, { text: "🔊 Group Unmuted" });
-            }
+            if (text === '.mute') await sock.groupSettingUpdate(from, "announcement");
+            if (text === '.unmute') await sock.groupSettingUpdate(from, "not_announcement");
             if (text.startsWith('.kick')) {
                 const mentioned = m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-                if (mentioned) {
-                    await sock.groupParticipantsUpdate(from, [mentioned], "remove");
-                    await sock.sendMessage(from, { text: `✅ Kicked user`, mentions: [mentioned] });
-                }
+                if (mentioned) await sock.groupParticipantsUpdate(from, [mentioned], "remove");
             }
         }
     });
-
-    console.log("✅ Final Stable Bot Ready for 24/7");
 }
 
 startBot();
